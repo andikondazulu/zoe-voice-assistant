@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Voice Assistant — Ask + Diary
 
-## Getting Started
+A voice-in, voice-out Next.js app with two modes
 
-First, run the development server:
+- **Ask** - speak a general knowledge question, it answers from what
+  the model already knows (Google Gemini) and reads it back to you.
+- **Diary** -  each day it asks you a reflective question out loud, you
+  answer by speaking, and your answer is saved so you can read it back
+  later, from any device (including your phone). A "See patterns &
+  advice" button reads back your recent entries and offers grounded,
+  non-clinical observations and suggestions.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+A small 3D character avatar (built with Three.js and no external model
+files) reacts to what is happening  idle, listening, thinking, or
+speaking, shown through a soft glow through movement.
+
+**Why Gemini instead of Claude/OpenAI?** Google's Gemini API has a
+genuinely free tier (no card, no prepaid credit) for models like
+`gemini-2.5-flash`, which is what this project runs on. The tradeoff of 
+the free tier doesn't include live web search (that's a paid add-on
+even on Gemini), so answers come from the model's own training rather
+than the current internet.
+
+## How the files are organized
+
+```
+app/
+  page.jsx              — top-level page (tabs + shared avatar)
+  api/ask/route.js      — Q&A backend (Gemini API)
+  api/diary/route.js    — diary backend (Supabase read/write)
+  api/insights/route.js — reads recent entries, returns patterns/advice
+components/
+  Avatar3D.jsx           — the 3D character avatar
+  AskMode.jsx            — Q&A mode UI
+  DiaryMode.jsx          — diary mode UI
+lib/
+  useVoice.js            — shared mic + speech-synthesis hook
+  diaryPrompts.js        — rotating list of daily prompts
+  styles.js              — shared inline styles
+  supabaseClient.js      — server-only Supabase client
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Your API keys stay on the server (inside the `route.js` files) and are
+never exposed to the browser.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+##  How the Setup was done
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Create a new Next.js app if you don't already have one, choosing
+   the **App Router**:
+   ```
+   npx create-next-app@latest voice-assistant
+   ```
 
-## Learn More
+2. Copy every file from this folder into your project, matching the
+   same folder structure (`app/`, `components/`, `lib/`).
 
-To learn more about Next.js, take a look at the following resources:
+3. Install dependencies:
+   ```
+   npm install three @supabase/supabase-js
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+4. **Get a free Gemini API key**:
+   - Go to https://aistudio.google.com/apikey and sign in with a
+     Google account.
+   - Click **Create API key** — no billing or card required for the
+     free tier.
+   - Copy the key.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+5. **Set up Supabase** (free tier is enough for personal use):
+   - Create a project at https://supabase.com
+   - In the SQL editor, run:
+     ```sql
+     create table diary_entries (
+       id uuid primary key default gen_random_uuid(),
+       entry_date date not null,
+       question text,
+       answer text not null,
+       created_at timestamptz default now()
+     );
+     ```
+   - In your Supabase project settings, find your **Project URL** and
+     your **service_role key** (Settings → API). Keep the service role
+     key secret — it has full write access.
 
-## Deploy on Vercel
+6. Create a `.env.local` file in your project root:
+   ```
+   GEMINI_API_KEY=your-gemini-key
+   SUPABASE_URL=your-supabase-project-url
+   SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+7. Run it locally:
+   ```
+   npm run dev
+   ```
+   Open http://localhost:3000 in **Chrome or Edge** — Safari and
+   Firefox don't fully support the Web Speech API yet.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Using it on your phone as a new user
+
+Speech recognition and synthesis need to run in a real browser, so for
+phone use you wil want to **deploy** the app  rather than just open
+`localhost` on your phone. Once deployed:
+
+- Add your three env vars in your hosting provider's dashboard
+  (never commit `.env.local`).
+- Open the deployed URL in Chrome on your phone - diary entries you
+  save there will show up when you open the same URL on any other
+  device, since they're stored in Supabase, not the browser.
+
+## Things to try next
+
+- **Reminders**: adding a daily notification
+  missed.
+- **Editing/deleting entries**: the diary route only supports GET and
+  POST right now — add a DELETE handler if you want to remove entries.
+- **Private by default**: since this uses a single service-role key
+  with no login, anyone with your deployed URL could use your diary.
+  Add simple password protection .
+- **Smarter prompts**: swapping the fixed prompt list in
+  `lib/diaryPrompts.js` for one generated by Gemini.
+- **Live search later**: if I ever want current-events answers, I
+  could add Gemini's paid Google Search grounding tool, or swap the
+  Ask route back to a provider with a  in-builtsearch tool.
+
+## Notes on cost
+
+With Gemini's free tier and Supabase's free tier, this app costs
+nothing to run at personal-project scale. Free tiers do have rate
+limits (requests per minute/day).
